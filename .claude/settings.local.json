@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd:*)",
+      "Read(//mnt/c/Users/**)",
+      "WebSearch",
+      "Bash(python3:*)",
+      "Bash(python:*)",
+      "Bash(find:*)",
+      "WebFetch(domain:community.n8n.io)",
+      "WebFetch(domain:docs.n8n.io)",
+      "Bash(timeout:*)",
+      "Bash(tree:*)",
+      "WebFetch(domain:docs.streamlit.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:supabase.com)",
+      "Bash(chmod:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

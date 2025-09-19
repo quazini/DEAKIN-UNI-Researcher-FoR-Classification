@@ -1,0 +1,25 @@
+# Streamlit FoR Classification Chat Interface Dependencies
+
+# Core framework
+streamlit>=1.49.1
+
+# HTTP requests for webhook integration
+requests>=2.32.5
+
+# JSON handling and data processing
+python-dateutil>=2.9.0
+
+# Authentication and database
+argon2-cffi>=23.1.0
+
+# Environment configuration
+python-dotenv>=1.0.0
+
+# Production web server
+gunicorn>=21.2.0
+
+# Additional utilities (uuid is built-in, no need to install)
+# uuid
+
+# Production monitoring and logging
+psutil>=5.9.0

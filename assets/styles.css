@@ -1,0 +1,276 @@
+/* Custom CSS for FoR Classification Chat Interface */
+
+/* Main container styling */
+.main .block-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+}
+
+/* Header styling */
+.main h1 {
+    background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+/* Chat message styling */
+.stChatMessage {
+    margin-bottom: 1rem;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* User message styling */
+.stChatMessage[data-testid="chat-message-user"] {
+    background: linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%);
+    color: white;
+}
+
+/* Assistant message styling */
+.stChatMessage[data-testid="chat-message-assistant"] {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    border-left: 4px solid #3b82f6;
+}
+
+/* Sidebar styling */
+.css-1d391kg {
+    background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+}
+
+/* Metric cards styling */
+.metric-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    border-radius: 10px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e2e8f0;
+    margin: 0.5rem 0;
+}
+
+/* Classification cards styling */
+.classification-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 0.5rem 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border-left: 4px solid #3b82f6;
+}
+
+/* Confidence indicators */
+.confidence-high {
+    color: #16a34a;
+    font-weight: 600;
+}
+
+.confidence-medium {
+    color: #eab308;
+    font-weight: 600;
+}
+
+.confidence-low {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+/* Button styling */
+.stButton > button {
+    background: linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.stButton > button:hover {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+    box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+    transform: translateY(-1px);
+}
+
+/* Expander styling */
+.streamlit-expanderHeader {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    font-weight: 500;
+}
+
+/* Tab styling */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+}
+
+.stTabs [aria-selected="true"] {
+    background: linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%);
+    color: white;
+}
+
+/* Spinner styling */
+.stSpinner {
+    text-align: center;
+    color: #3b82f6;
+}
+
+/* Progress bar styling */
+.stProgress .st-bo {
+    background: linear-gradient(90deg, #3b82f6 0%, #1e3a8a 100%);
+}
+
+/* Info/Success/Warning/Error styling */
+.stAlert {
+    border-radius: 8px;
+    border: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Input styling */
+.stTextInput > div > div > input {
+    border-radius: 8px;
+    border: 2px solid #e2e8f0;
+    transition: all 0.3s ease;
+}
+
+.stTextInput > div > div > input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Chat input styling */
+.stChatInput > div {
+    border-radius: 12px;
+    border: 2px solid #e2e8f0;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.stChatInput > div:focus-within {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #3b82f6 0%, #1e3a8a 100%);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);
+}
+
+/* Animation classes */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+/* Custom tag styling */
+.keyword-tag {
+    display: inline-block;
+    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+    color: #1e40af;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    margin: 2px;
+    border: 1px solid #93c5fd;
+}
+
+.keyword-tag:hover {
+    background: linear-gradient(135deg, #bfdbfe 0%, #93c5fd 100%);
+    transform: scale(1.05);
+    transition: all 0.2s ease;
+}
+
+/* Researcher profile header */
+.researcher-header {
+    background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+    color: white;
+    padding: 20px;
+    border-radius: 12px;
+    margin: 10px 0;
+    box-shadow: 0 4px 8px rgba(59, 130, 246, 0.2);
+}
+
+.researcher-header h2 {
+    margin: 0;
+    color: white !important;
+    -webkit-text-fill-color: white !important;
+}
+
+/* Institutional info cards */
+.institutional-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.institutional-card:hover {
+    border-color: #3b82f6;
+    box-shadow: 0 4px 8px rgba(59, 130, 246, 0.1);
+    transform: translateY(-2px);
+}
+
+/* Metrics dashboard */
+.metric-dashboard {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+}
+
+.metric-item {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e2e8f0;
+    transition: all 0.3s ease;
+}
+
+.metric-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
