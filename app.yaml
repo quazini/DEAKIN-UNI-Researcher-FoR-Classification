@@ -1,12 +1,12 @@
 # Digital Ocean App Platform Specification
 # Deploy with: doctl apps create --spec app.yaml
 
-name: for-classification
+name: for-classification-app
 region: nyc3
 
 # Automatic deployment from GitHub
 github:
-  repo: YOUR_GITHUB_USERNAME/YOUR_REPO_NAME
+  repo: quazini/DEAKIN-UNI-FoR-Classification
   branch: main
   deploy_on_push: true
 
@@ -72,7 +72,7 @@ services:
 
       # Webhook configuration
       - key: DEFAULT_WEBHOOK_URL
-        value: "YOUR_N8N_WEBHOOK_URL"
+        value: "https://mbcrc.app.n8n.cloud/webhook/530ec5fa-656a-4c9c-bb05-5be7ff3bdef2"
         type: PLAIN
 
       # Sensitive environment variables (set via DO App Platform UI or CLI)

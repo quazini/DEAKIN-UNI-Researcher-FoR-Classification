@@ -12,6 +12,7 @@ from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHas
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import logging
+from .config import get_config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -24,10 +25,14 @@ class SimpleAuthManager:
     """Simple authentication manager using direct HTTP requests to Supabase"""
 
     def __init__(self):
-        """Initialize with Streamlit secrets"""
+        """Initialize with configuration"""
         try:
-            self.supabase_url = st.secrets["connections"]["supabase"]["SUPABASE_URL"]
-            self.supabase_key = st.secrets["connections"]["supabase"]["SUPABASE_KEY"]
+            # Use ConfigManager for multi-source configuration
+            config_manager = get_config()
+            supabase_config = config_manager.get_supabase_config()
+
+            self.supabase_url = supabase_config['url']
+            self.supabase_key = supabase_config['key']
             self.admin_email = st.secrets.get("admin", {}).get("ADMIN_EMAIL", "")
 
             # Construct API endpoint

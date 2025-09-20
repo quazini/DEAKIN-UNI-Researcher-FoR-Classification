@@ -10,6 +10,7 @@ from argon2 import PasswordHasher
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import logging
+from .config import get_config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -24,10 +25,15 @@ class AdminAuthManager:
     def __init__(self):
         """Initialize with service role key from SUPABASE_KEY"""
         try:
-            self.supabase_url = st.secrets["connections"]["supabase"]["SUPABASE_URL"]
+            # Use ConfigManager for multi-source configuration
+            config_manager = get_config()
+            supabase_config = config_manager.get_supabase_config()
+            app_config = config_manager.get_app_config()
+
+            self.supabase_url = supabase_config['url']
             # Since you replaced SUPABASE_KEY with service role key, we use it directly
-            self.service_key = st.secrets["connections"]["supabase"]["SUPABASE_KEY"]
-            self.admin_email = st.secrets.get("admin", {}).get("ADMIN_EMAIL", "")
+            self.service_key = supabase_config['key']
+            self.admin_email = app_config['admin_email']
 
             # API setup
             self.api_url = f"{self.supabase_url}/rest/v1"
@@ -246,3 +252,16 @@ SERVICE_ROLE_KEY = "your-service-role-key"
 
 ⚠️ Keep service role key secure - it has full database access!
         """
+
+    def check_database_connection(self) -> bool:
+        """Check if database connection is working"""
+        try:
+            response = requests.get(
+                f"{self.api_url}/users?select=email&limit=1",
+                headers=self.headers,
+                timeout=5
+            )
+            return response.status_code in [200, 206]
+        except Exception as e:
+            logger.error(f"Database connection check failed: {e}")
+            return False
