@@ -246,7 +246,7 @@ jobs:
 
           echo "=== Checking existing apps ==="
           echo "All apps in account:"
-          doctl apps list --format ID,Name,Status
+          doctl apps list --format ID,Spec.Name,ActiveDeployment.ID,Updated
 
           # Simple and safe app detection using JSON output and jq
           echo "=== Looking for app with name: $APP_NAME ==="
@@ -312,7 +312,7 @@ jobs:
           else
             echo "❌ Could not find app with name: $APP_NAME"
             echo "Available apps:"
-            doctl apps list --format Name,Status,LiveURL
+            doctl apps list --format Spec.Name,Updated,DefaultIngress
             exit 1
           fi
 
