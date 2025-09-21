@@ -82,10 +82,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
+            type=raw,value=main-${{ github.sha }},enable={{is_default_branch}}
 
       - name: Debug - Show Docker tags
         run: |
@@ -139,8 +138,15 @@ jobs:
 
       - name: Update app_registry.yaml with image tag
         run: |
-          echo "=== Updating image tag to ${{ github.sha }} ==="
-          sed -i "s|tag: latest|tag: ${{ github.sha }}|g" app_registry.yaml
+          echo "=== Updating app_registry.yaml with SHA tag ==="
+          # Use the simple SHA tag for deployment
+          IMAGE_TAG="${{ github.sha }}"
+
+          echo "SHA: ${{ github.sha }}"
+          echo "Using image tag: $IMAGE_TAG"
+
+          echo "=== Updating app_registry.yaml ==="
+          sed -i "s|tag: latest|tag: $IMAGE_TAG|g" app_registry.yaml
           echo "Updated app_registry.yaml:"
           cat app_registry.yaml
 
@@ -150,6 +156,38 @@ jobs:
           doctl account get
           echo "=== Listing existing apps ==="
           doctl apps list || echo "No apps found or error listing apps"
+
+      - name: Verify Docker image exists in registry
+        run: |
+          echo "=== Verifying image exists in registry ==="
+          IMAGE_TAG="${{ github.sha }}"
+
+          # Check if registry exists
+          if ! doctl registry get 2>/dev/null; then
+            echo "❌ Container registry not found!"
+            echo "Create registry with: doctl registry create for-classification --region nyc3"
+            exit 1
+          fi
+
+          # Check if repository exists
+          if ! doctl registry repository list | grep -q "for-classification/streamlit"; then
+            echo "⚠️  Repository for-classification/streamlit not found"
+            echo "Creating repository..."
+            # Repository is created automatically when first image is pushed
+          fi
+
+          # Verify the specific image tag exists
+          echo "Looking for image tag: $IMAGE_TAG"
+          if doctl registry repository list-tags for-classification/streamlit | grep -q "$IMAGE_TAG"; then
+            echo "✅ Image tag $IMAGE_TAG found in registry"
+          else
+            echo "❌ Image tag $IMAGE_TAG not found in registry!"
+            echo "Available tags:"
+            doctl registry repository list-tags for-classification/streamlit || echo "No tags found"
+            echo ""
+            echo "Expected image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$IMAGE_TAG"
+            exit 1
+          fi
 
       - name: Deploy to Digital Ocean App Platform
         run: |
