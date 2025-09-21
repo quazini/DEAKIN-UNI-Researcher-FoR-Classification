@@ -39,50 +39,42 @@ services:
       # Streamlit configuration
       - key: STREAMLIT_SERVER_PORT
         value: "8501"
-        type: PLAIN
 
       - key: STREAMLIT_SERVER_ADDRESS
         value: "0.0.0.0"
-        type: PLAIN
 
       - key: STREAMLIT_SERVER_HEADLESS
         value: "true"
-        type: PLAIN
 
       - key: STREAMLIT_BROWSER_GATHER_USAGE_STATS
         value: "false"
-        type: PLAIN
 
       # Application settings
       - key: APP_NAME
         value: "FoR Classification System"
-        type: PLAIN
 
       - key: APP_ENV
         value: "production"
-        type: PLAIN
 
       - key: SESSION_TIMEOUT_MINUTES
         value: "60"
-        type: PLAIN
 
       # Webhook configuration
       - key: DEFAULT_WEBHOOK_URL
         value: "https://mbcrc.app.n8n.cloud/webhook/530ec5fa-656a-4c9c-bb05-5be7ff3bdef2"
-        type: PLAIN
 
       # Sensitive environment variables (set via DO App Platform UI or CLI)
       - key: SUPABASE_URL
-        type: SECRET
-        value: "SUPABASE_URL"
+        scope: RUN_TIME
+        value: "${SUPABASE_URL}"
 
       - key: SUPABASE_KEY
-        type: SECRET
-        value: "SUPABASE_KEY"
+        scope: RUN_TIME
+        value: "${SUPABASE_KEY}"
 
       - key: ADMIN_EMAIL
-        type: SECRET
-        value: "ADMIN_EMAIL"
+        scope: RUN_TIME
+        value: "${ADMIN_EMAIL}"
 
     # Alerts
     alerts:
