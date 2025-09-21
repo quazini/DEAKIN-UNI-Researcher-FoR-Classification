@@ -153,7 +153,7 @@ jobs:
           cat app_registry.yaml
           echo "=== End of app_registry.yaml ==="
 
-      - name: Update app_registry.yaml with image tag and environment variables
+      - name: Update app_registry.yaml with image tag
         run: |
           echo "=== Updating app_registry.yaml ==="
           # Use the main-SHA tag format that was actually pushed
@@ -164,12 +164,6 @@ jobs:
 
           echo "=== Updating image tag ==="
           sed -i "s|tag: latest|tag: $IMAGE_TAG|g" app_registry.yaml
-
-          echo "=== Updating environment variables with actual values ==="
-          # Replace template variables with actual values from GitHub secrets
-          sed -i "s|\${SUPABASE_URL}|${{ secrets.SUPABASE_URL }}|g" app_registry.yaml
-          sed -i "s|\${SUPABASE_KEY}|${{ secrets.SUPABASE_KEY }}|g" app_registry.yaml
-          sed -i "s|\${ADMIN_EMAIL}|${{ secrets.ADMIN_EMAIL }}|g" app_registry.yaml
 
           echo "Updated app_registry.yaml:"
           cat app_registry.yaml
@@ -250,16 +244,44 @@ jobs:
           APP_NAME="${{ secrets.DO_APP_NAME }}"
           echo "App name: $APP_NAME"
 
-          # Check if app exists and get its ID
-          APP_ID=$(doctl apps list --format ID,Name --no-header | grep "$APP_NAME" | awk '{print $1}')
+          echo "=== Checking existing apps ==="
+          echo "All apps in account:"
+          doctl apps list --format ID,Name,Status
+
+          # Simple and safe app detection using JSON output and jq
+          echo "=== Looking for app with name: $APP_NAME ==="
+
+          # Use jq for exact string matching (no regex, no special character issues)
+          APP_ID=$(doctl apps list --output json | jq -r --arg name "$APP_NAME" '.[] | select(.spec.name == $name) | .id')
 
           if [ -n "$APP_ID" ]; then
             echo "Found existing app: $APP_NAME (ID: $APP_ID)"
             echo "Updating existing app..."
             doctl apps update "$APP_ID" --spec app_registry.yaml --wait --verbose
           else
-            echo "App $APP_NAME not found. Creating new app..."
-            doctl apps create --spec app_registry.yaml --wait --verbose
+            echo "App $APP_NAME not found in list above."
+            echo "Attempting to create new app..."
+
+            # Try to create, handle name conflict gracefully
+            if doctl apps create --spec app_registry.yaml --wait --verbose 2>&1; then
+              echo "✅ App created successfully"
+            else
+              CREATE_ERROR=$?
+              echo "❌ App creation failed, checking if it exists now..."
+
+              # Try to find the app again after failed creation
+              sleep 5
+              echo "Re-checking for app after creation attempt..."
+              APP_ID=$(doctl apps list --output json | jq -r --arg name "$APP_NAME" '.[] | select(.spec.name == $name) | .id')
+
+              if [ -n "$APP_ID" ]; then
+                echo "✅ App exists now (ID: $APP_ID), updating instead..."
+                doctl apps update "$APP_ID" --spec app_registry.yaml --wait --verbose
+              else
+                echo "❌ App creation failed and app still not found"
+                exit $CREATE_ERROR
+              fi
+            fi
           fi
 
           echo "=== Deployment command completed ==="
@@ -271,7 +293,7 @@ jobs:
           echo "App name: $APP_NAME"
 
           # Get app ID from app name since doctl apps get requires ID, not name
-          APP_ID=$(doctl apps list --format ID,Name --no-header | grep "$APP_NAME" | awk '{print $1}')
+          APP_ID=$(doctl apps list --output json | jq -r --arg name "$APP_NAME" '.[] | select(.spec.name == $name) | .id')
 
           if [ -n "$APP_ID" ]; then
             echo "App ID: $APP_ID"
