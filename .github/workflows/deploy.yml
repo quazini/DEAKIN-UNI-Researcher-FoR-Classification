@@ -153,7 +153,7 @@ jobs:
           cat app_registry.yaml
           echo "=== End of app_registry.yaml ==="
 
-      - name: Update app_registry.yaml with image tag
+      - name: Update app_registry.yaml with image tag and secrets
         run: |
           echo "=== Updating app_registry.yaml ==="
           # Use the main-SHA tag format that was actually pushed
@@ -165,8 +165,17 @@ jobs:
           echo "=== Updating image tag ==="
           sed -i "s|tag: latest|tag: $IMAGE_TAG|g" app_registry.yaml
 
-          echo "Updated app_registry.yaml:"
-          cat app_registry.yaml
+          echo "=== Injecting secrets from GitHub Secrets ==="
+          # Replace placeholders with actual values from GitHub secrets
+          sed -i "s|\${SUPABASE_URL}|${{ secrets.SUPABASE_URL }}|g" app_registry.yaml
+          sed -i "s|\${SUPABASE_KEY}|${{ secrets.SUPABASE_KEY }}|g" app_registry.yaml
+          sed -i "s|\${ADMIN_EMAIL}|${{ secrets.ADMIN_EMAIL }}|g" app_registry.yaml
+
+          echo "Updated app_registry.yaml (secrets masked):"
+          # Show the file but mask the actual secret values
+          cat app_registry.yaml | sed -e "s|${{ secrets.SUPABASE_URL }}|***SUPABASE_URL***|g" \
+                                    -e "s|${{ secrets.SUPABASE_KEY }}|***SUPABASE_KEY***|g" \
+                                    -e "s|${{ secrets.ADMIN_EMAIL }}|***ADMIN_EMAIL***|g"
 
       - name: Test doctl connectivity
         run: |
