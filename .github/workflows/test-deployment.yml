@@ -1,0 +1,226 @@
+name: Test Deployment Configuration
+
+on:
+  workflow_dispatch:  # Manual trigger only
+  push:
+    branches: [test-deployment]  # Or trigger on a test branch
+
+jobs:
+  validate-config:
+    runs-on: ubuntu-latest
+    name: Validate Configuration Files
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check required files
+        run: |
+          echo "=== Checking Required Files ==="
+
+          files=(
+            "app_registry.yaml"
+            "Dockerfile"
+            "requirements.txt"
+            "login.py"
+          )
+
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "✓ $file exists"
+            else
+              echo "✗ $file is missing!"
+              exit 1
+            fi
+          done
+
+      - name: Validate YAML syntax
+        run: |
+          echo "=== Validating YAML Syntax ==="
+          python3 -m pip install pyyaml
+          python3 - <<'EOF'
+          import yaml
+          import json
+
+          with open('app_registry.yaml', 'r') as f:
+              config = yaml.safe_load(f)
+
+          print("YAML is valid!")
+          print("\nConfiguration summary:")
+          print(f"App name: {config.get('name')}")
+
+          if 'services' in config and config['services']:
+              service = config['services'][0]
+              print(f"Service name: {service.get('name')}")
+
+              if 'image' in service:
+                  print("\nImage configuration:")
+                  for k, v in service['image'].items():
+                      print(f"  {k}: {v}")
+
+              if 'envs' in service:
+                  print(f"\nEnvironment variables: {len(service['envs'])} configured")
+
+                  # Check for problematic configurations
+                  for env in service['envs']:
+                      if 'type' in env and env['type'].upper() in ['PLAIN', 'SECRET']:
+                          print(f"⚠️  WARNING: {env['key']} has type '{env['type']}' - removing type field")
+          EOF
+
+  test-docker-build:
+    runs-on: ubuntu-latest
+    name: Test Docker Build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Test Docker build (no push)
+        run: |
+          echo "=== Testing Docker Build ==="
+          docker build -t test-image:latest .
+
+          echo "=== Docker Build Successful ==="
+          echo "Image size: $(docker images test-image:latest --format '{{.Size}}')"
+
+  test-doctl-connection:
+    runs-on: ubuntu-latest
+    name: Test DigitalOcean Connection
+    if: github.event_name == 'workflow_dispatch'  # Only on manual trigger
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DO_ACCESS_TOKEN }}
+
+      - name: Test DO connection
+        run: |
+          echo "=== Testing DigitalOcean Connection ==="
+
+          if doctl account get; then
+            echo "✓ Successfully connected to DigitalOcean"
+          else
+            echo "✗ Failed to connect to DigitalOcean"
+            echo "Check that DO_ACCESS_TOKEN secret is set correctly"
+            exit 1
+          fi
+
+      - name: Check registry
+        run: |
+          echo "=== Checking Container Registry ==="
+
+          if doctl registry get 2>/dev/null; then
+            echo "✓ Container registry exists"
+
+            echo "=== Registry repositories ==="
+            doctl registry repository list || echo "No repositories found"
+          else
+            echo "✗ No container registry found"
+            echo "Create one with: doctl registry create for-classification"
+          fi
+
+      - name: Check existing apps
+        run: |
+          echo "=== Checking Existing Apps ==="
+
+          if [ -z "${{ secrets.DO_APP_NAME }}" ]; then
+            echo "⚠️  DO_APP_NAME secret is not set"
+          else
+            echo "Looking for app: ${{ secrets.DO_APP_NAME }}"
+
+            if doctl apps list --format Name --no-header | grep -q "${{ secrets.DO_APP_NAME }}"; then
+              echo "✓ App '${{ secrets.DO_APP_NAME }}' exists"
+              doctl apps get "${{ secrets.DO_APP_NAME }}" --format ID,LiveURL,UpdatedAt --no-header
+            else
+              echo "ℹ️  App '${{ secrets.DO_APP_NAME }}' does not exist (will be created)"
+            fi
+          fi
+
+  test-app-spec:
+    runs-on: ubuntu-latest
+    name: Test App Specification
+    if: github.event_name == 'workflow_dispatch'  # Only on manual trigger
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DO_ACCESS_TOKEN }}
+
+      - name: Update image tag in spec
+        run: |
+          echo "=== Original app_registry.yaml ==="
+          cat app_registry.yaml
+
+          echo -e "\n=== Updating tag to test-${{ github.run_number }} ==="
+          sed -i "s|tag: latest|tag: test-${{ github.run_number }}|g" app_registry.yaml
+
+          echo -e "\n=== Updated app_registry.yaml ==="
+          cat app_registry.yaml
+
+      - name: Validate app spec
+        run: |
+          echo "=== Validating App Specification ==="
+
+          if doctl apps spec validate app_registry.yaml; then
+            echo "✓ App specification is valid"
+          else
+            echo "✗ App specification validation failed"
+            echo "Check the error message above for details"
+            exit 1
+          fi
+
+      - name: Dry run app creation
+        run: |
+          echo "=== Testing App Creation (Dry Run) ==="
+
+          # This will validate without actually creating the app
+          doctl apps spec validate app_registry.yaml --verbose
+
+          echo "✓ App specification is ready for deployment"
+
+  summary:
+    runs-on: ubuntu-latest
+    needs: [validate-config, test-docker-build]
+    if: always()
+    name: Summary
+
+    steps:
+      - name: Summary
+        run: |
+          echo "=== Deployment Test Summary ==="
+          echo "==============================="
+
+          if [ "${{ needs.validate-config.result }}" == "success" ]; then
+            echo "✓ Configuration files valid"
+          else
+            echo "✗ Configuration validation failed"
+          fi
+
+          if [ "${{ needs.test-docker-build.result }}" == "success" ]; then
+            echo "✓ Docker build successful"
+          else
+            echo "✗ Docker build failed"
+          fi
+
+          echo ""
+          echo "To run full tests including DO connection:"
+          echo "1. Go to Actions tab"
+          echo "2. Select 'Test Deployment Configuration'"
+          echo "3. Click 'Run workflow'"
+
+          if [ "${{ needs.validate-config.result }}" != "success" ] || [ "${{ needs.test-docker-build.result }}" != "success" ]; then
+            echo ""
+            echo "⚠️  Some tests failed. Check the logs above for details."
+            exit 1
+          fi

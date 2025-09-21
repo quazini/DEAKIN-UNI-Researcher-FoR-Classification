@@ -17,7 +17,8 @@
       "Bash(chmod:*)",
       "Bash(docker build:*)",
       "Bash(docker run:*)",
-      "Bash(xargs -r docker stop)"
+      "Bash(xargs -r docker stop)",
+      "Bash(bash:*)"
     ],
     "deny": [],
     "ask": []

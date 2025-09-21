@@ -4,6 +4,11 @@
 name: for-classification
 region: nyc3
 
+# App-level alerts (optional)
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DEPLOYMENT_LIVE
+
 services:
   - name: streamlit
 
@@ -75,15 +80,3 @@ services:
       - key: ADMIN_EMAIL
         scope: RUN_TIME
         value: "${ADMIN_EMAIL}"
-
-    # Alerts
-    alerts:
-      - rule: DEPLOYMENT_FAILED
-      - rule: DOMAIN_FAILED
-      - rule: DEPLOYMENT_LIVE
-
-    # Logs
-    log_destinations:
-      - name: streamlit-logs
-        papertrail:
-          endpoint: syslog+tls://logs.papertrailapp.com:12345

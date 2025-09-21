@@ -87,6 +87,13 @@ jobs:
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
+      - name: Debug - Show Docker tags
+        run: |
+          echo "=== Docker tags to be built ==="
+          echo "${{ steps.meta.outputs.tags }}"
+          echo "=== Docker labels ==="
+          echo "${{ steps.meta.outputs.labels }}"
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -97,6 +104,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
+
+      - name: Verify Docker image push
+        run: |
+          echo "=== Verifying image was pushed to registry ==="
+          doctl registry repository list-tags for-classification/streamlit || echo "Failed to list tags"
 
   # Deploy to Digital Ocean App Platform
   deploy:
@@ -114,22 +126,48 @@ jobs:
         with:
           token: ${{ secrets.DO_ACCESS_TOKEN }}
 
+      - name: Validate app_registry.yaml
+        run: |
+          echo "=== Validating app_registry.yaml ==="
+          if [ ! -f app_registry.yaml ]; then
+            echo "::error::app_registry.yaml not found!"
+            exit 1
+          fi
+          echo "File exists. Contents:"
+          cat app_registry.yaml
+          echo "=== End of app_registry.yaml ==="
+
       - name: Update app_registry.yaml with image tag
         run: |
-          # Update the app_registry.yaml with the correct image tag
+          echo "=== Updating image tag to ${{ github.sha }} ==="
           sed -i "s|tag: latest|tag: ${{ github.sha }}|g" app_registry.yaml
+          echo "Updated app_registry.yaml:"
           cat app_registry.yaml
+
+      - name: Test doctl connectivity
+        run: |
+          echo "=== Testing DigitalOcean API connectivity ==="
+          doctl account get
+          echo "=== Listing existing apps ==="
+          doctl apps list || echo "No apps found or error listing apps"
 
       - name: Deploy to Digital Ocean App Platform
         run: |
+          set -e
+          echo "=== Starting deployment ==="
+          echo "App name from secrets: ${{ secrets.DO_APP_NAME }}"
+
           # Check if app exists
           if doctl apps list --format Name --no-header | grep -q "${{ secrets.DO_APP_NAME }}"; then
+            echo "Found existing app: ${{ secrets.DO_APP_NAME }}"
             echo "Updating existing app..."
-            doctl apps update ${{ secrets.DO_APP_NAME }} --spec app_registry.yaml --wait
+            doctl apps update "${{ secrets.DO_APP_NAME }}" --spec app_registry.yaml --wait --verbose
           else
-            echo "Creating new app..."
-            doctl apps create --spec app_registry.yaml --wait
+            echo "App ${{ secrets.DO_APP_NAME }} not found. Creating new app..."
+            doctl apps create --spec app_registry.yaml --wait --verbose
           fi
+
+          echo "=== Deployment command completed ==="
 
       - name: Get app URL
         run: |
@@ -146,6 +184,33 @@ jobs:
     name: Notify on Failure
 
     steps:
-      - name: Notification
+      - name: Determine Failure Point
         run: |
-          echo "::error title=Deployment Failed::The deployment pipeline failed. Check the logs for details."
+          echo "=== Deployment Pipeline Status ==="
+          echo "=================================="
+
+          if [ "${{ needs.test.result }}" != "success" ] && [ "${{ needs.test.result }}" != "skipped" ]; then
+            echo "❌ Test job failed"
+            echo "::error title=Test Failed::The test job failed. Check test logs for Python syntax errors or Docker build issues."
+          fi
+
+          if [ "${{ needs.build.result }}" != "success" ] && [ "${{ needs.build.result }}" != "skipped" ]; then
+            echo "❌ Build job failed"
+            echo "::error title=Build Failed::Docker image build or push to registry failed. Check if DO registry exists and DO_ACCESS_TOKEN is valid."
+          fi
+
+          if [ "${{ needs.deploy.result }}" != "success" ] && [ "${{ needs.deploy.result }}" != "skipped" ]; then
+            echo "❌ Deploy job failed"
+            echo "::error title=Deploy Failed::App deployment to DigitalOcean failed. Check app_registry.yaml syntax and DO_APP_NAME secret."
+          fi
+
+          echo ""
+          echo "Debug steps:"
+          echo "1. Click on the failed job above"
+          echo "2. Expand the failed step (marked with ❌)"
+          echo "3. Look for error messages in red text"
+          echo "4. Common issues:"
+          echo "   - Missing secrets (DO_ACCESS_TOKEN, DO_APP_NAME)"
+          echo "   - Registry doesn't exist in DigitalOcean"
+          echo "   - Invalid YAML syntax in app_registry.yaml"
+          echo "   - Docker build errors (missing files, syntax errors)"
