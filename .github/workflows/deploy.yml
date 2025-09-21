@@ -114,22 +114,21 @@ jobs:
         with:
           token: ${{ secrets.DO_ACCESS_TOKEN }}
 
-      - name: Update app.yaml with image
+      - name: Update app_registry.yaml with image tag
         run: |
-          # Update the app.yaml with the built image
-          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-          sed -i "s|dockerfile_path: Dockerfile|image: $IMAGE_TAG|g" app.yaml
-          cat app.yaml
+          # Update the app_registry.yaml with the correct image tag
+          sed -i "s|tag: latest|tag: ${{ github.sha }}|g" app_registry.yaml
+          cat app_registry.yaml
 
       - name: Deploy to Digital Ocean App Platform
         run: |
           # Check if app exists
           if doctl apps list --format Name --no-header | grep -q "${{ secrets.DO_APP_NAME }}"; then
             echo "Updating existing app..."
-            doctl apps update ${{ secrets.DO_APP_NAME }} --spec app.yaml --wait
+            doctl apps update ${{ secrets.DO_APP_NAME }} --spec app_registry.yaml --wait
           else
             echo "Creating new app..."
-            doctl apps create --spec app.yaml --wait
+            doctl apps create --spec app_registry.yaml --wait
           fi
 
       - name: Get app URL

@@ -10,8 +10,7 @@ services:
     # Container Registry configuration
     image:
       registry_type: DOCR
-      repository: streamlit
-      registry: for-classification
+      repository: for-classification/streamlit
       tag: latest
 
     # Instance configuration
