@@ -107,7 +107,24 @@ jobs:
       - name: Verify Docker image push
         run: |
           echo "=== Verifying image was pushed to registry ==="
-          doctl registry repository list-tags for-classification/streamlit || echo "Failed to list tags"
+
+          # Get registry name dynamically
+          REGISTRY_NAME=$(doctl registry get --format Name --no-header)
+          echo "Registry name: $REGISTRY_NAME"
+
+          # The repository path should be {registry-name}/streamlit
+          REPO_PATH="${REGISTRY_NAME}/streamlit"
+          echo "Checking repository: $REPO_PATH"
+
+          if doctl registry repository list-tags "$REPO_PATH"; then
+            echo "✅ Successfully pushed to registry"
+            echo "Latest tags:"
+            doctl registry repository list-tags "$REPO_PATH" --format Tag,UpdatedAt | head -5
+          else
+            echo "❌ Failed to verify image push"
+            echo "Listing all repositories in registry:"
+            doctl registry repository list-v2 "$REGISTRY_NAME" || echo "No repositories found"
+          fi
 
   # Deploy to Digital Ocean App Platform
   deploy:
@@ -162,34 +179,52 @@ jobs:
           echo "=== Verifying image exists in registry ==="
           IMAGE_TAG="main-${{ github.sha }}"
 
-          # Check if registry exists
-          if ! doctl registry get 2>/dev/null; then
+          # Get registry information
+          echo "=== Registry Information ==="
+          REGISTRY_INFO=$(doctl registry get 2>/dev/null)
+          if [ $? -eq 0 ]; then
+            echo "$REGISTRY_INFO"
+            REGISTRY_NAME=$(echo "$REGISTRY_INFO" | awk 'NR==2 {print $1}')
+            echo "Registry name: $REGISTRY_NAME"
+          else
             echo "❌ Container registry not found!"
-            echo "Create registry with: doctl registry create for-classification --region nyc3"
+            echo "Create registry with: doctl registry create for-classification --region syd1"
             exit 1
           fi
 
-          # First check if repository exists and show all available tags
-          echo "=== Checking repository and available tags ==="
-          if doctl registry repository list-tags for-classification/streamlit 2>/dev/null; then
-            echo "✅ Repository for-classification/streamlit exists"
+          # List all repositories in the registry
+          echo "=== Available repositories in registry ==="
+          if doctl registry repository list-v2 "$REGISTRY_NAME" 2>/dev/null; then
+            echo "✅ Registry accessible"
           else
-            echo "❌ Repository for-classification/streamlit not found or no tags exist"
+            echo "❌ Failed to list repositories in registry"
+            exit 1
+          fi
+
+          # Check if the streamlit repository exists and list its tags
+          echo "=== Checking streamlit repository tags ==="
+          REPO_PATH="${REGISTRY_NAME}/streamlit"
+          echo "Looking for repository: $REPO_PATH"
+
+          if doctl registry repository list-tags "$REPO_PATH" 2>/dev/null; then
+            echo "✅ Repository $REPO_PATH exists with tags above"
+
+            # Verify the specific image tag exists
+            echo "Looking for specific image tag: $IMAGE_TAG"
+            if doctl registry repository list-tags "$REPO_PATH" | grep -q "$IMAGE_TAG"; then
+              echo "✅ Image tag $IMAGE_TAG found in registry"
+            else
+              echo "❌ Image tag $IMAGE_TAG not found!"
+              echo "Available tags for $REPO_PATH:"
+              doctl registry repository list-tags "$REPO_PATH" --format Tag,UpdatedAt
+              echo ""
+              echo "Expected image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$IMAGE_TAG"
+              exit 1
+            fi
+          else
+            echo "❌ Repository $REPO_PATH not found or has no tags"
             echo "This usually means the Docker build/push step failed"
-            exit 1
-          fi
-
-          # Verify the specific image tag exists
-          echo "Looking for image tag: $IMAGE_TAG"
-          if doctl registry repository list-tags for-classification/streamlit | grep -q "$IMAGE_TAG"; then
-            echo "✅ Image tag $IMAGE_TAG found in registry"
-          else
-            echo "❌ Image tag $IMAGE_TAG not found in registry!"
-            echo "Available tags:"
-            doctl registry repository list-tags for-classification/streamlit || echo "No tags found"
-            echo ""
-            echo "Expected image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$IMAGE_TAG"
-            echo "Check if the Docker build step completed successfully"
+            echo "Check the build job logs for Docker push errors"
             exit 1
           fi
 

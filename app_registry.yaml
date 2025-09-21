@@ -15,7 +15,7 @@ services:
     # Container Registry configuration
     image:
       registry_type: DOCR
-      repository: for-classification/streamlit
+      repository: streamlit
       tag: latest
 
     # Instance configuration
