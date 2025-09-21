@@ -18,7 +18,9 @@
       "Bash(docker build:*)",
       "Bash(docker run:*)",
       "Bash(xargs -r docker stop)",
-      "Bash(bash:*)"
+      "Bash(bash:*)",
+      "WebFetch(domain:docs.digitalocean.com)",
+      "Bash(./debug-registry.sh)"
     ],
     "deny": [],
     "ask": []
