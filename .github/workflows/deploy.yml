@@ -138,9 +138,9 @@ jobs:
 
       - name: Update app_registry.yaml with image tag
         run: |
-          echo "=== Updating app_registry.yaml with SHA tag ==="
-          # Use the simple SHA tag for deployment
-          IMAGE_TAG="${{ github.sha }}"
+          echo "=== Updating app_registry.yaml with main-SHA tag ==="
+          # Use the main-SHA tag format that was actually pushed
+          IMAGE_TAG="main-${{ github.sha }}"
 
           echo "SHA: ${{ github.sha }}"
           echo "Using image tag: $IMAGE_TAG"
@@ -160,7 +160,7 @@ jobs:
       - name: Verify Docker image exists in registry
         run: |
           echo "=== Verifying image exists in registry ==="
-          IMAGE_TAG="${{ github.sha }}"
+          IMAGE_TAG="main-${{ github.sha }}"
 
           # Check if registry exists
           if ! doctl registry get 2>/dev/null; then
@@ -169,11 +169,14 @@ jobs:
             exit 1
           fi
 
-          # Check if repository exists
-          if ! doctl registry repository list | grep -q "for-classification/streamlit"; then
-            echo "⚠️  Repository for-classification/streamlit not found"
-            echo "Creating repository..."
-            # Repository is created automatically when first image is pushed
+          # First check if repository exists and show all available tags
+          echo "=== Checking repository and available tags ==="
+          if doctl registry repository list-tags for-classification/streamlit 2>/dev/null; then
+            echo "✅ Repository for-classification/streamlit exists"
+          else
+            echo "❌ Repository for-classification/streamlit not found or no tags exist"
+            echo "This usually means the Docker build/push step failed"
+            exit 1
           fi
 
           # Verify the specific image tag exists
@@ -186,6 +189,7 @@ jobs:
             doctl registry repository list-tags for-classification/streamlit || echo "No tags found"
             echo ""
             echo "Expected image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$IMAGE_TAG"
+            echo "Check if the Docker build step completed successfully"
             exit 1
           fi
 
