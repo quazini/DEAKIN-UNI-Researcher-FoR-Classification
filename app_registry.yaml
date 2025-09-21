@@ -68,15 +68,12 @@ services:
       - key: DEFAULT_WEBHOOK_URL
         value: "https://mbcrc.app.n8n.cloud/webhook/530ec5fa-656a-4c9c-bb05-5be7ff3bdef2"
 
-      # Sensitive environment variables (set via DO App Platform UI or CLI)
+      # Sensitive environment variables (will be replaced by GitHub Actions)
       - key: SUPABASE_URL
-        scope: RUN_TIME
         value: "${SUPABASE_URL}"
 
       - key: SUPABASE_KEY
-        scope: RUN_TIME
         value: "${SUPABASE_KEY}"
 
       - key: ADMIN_EMAIL
-        scope: RUN_TIME
         value: "${ADMIN_EMAIL}"

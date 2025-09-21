@@ -20,7 +20,8 @@
       "Bash(xargs -r docker stop)",
       "Bash(bash:*)",
       "WebFetch(domain:docs.digitalocean.com)",
-      "Bash(./debug-registry.sh)"
+      "Bash(./debug-registry.sh)",
+      "Bash(doctl auth init:*)"
     ],
     "deny": [],
     "ask": []

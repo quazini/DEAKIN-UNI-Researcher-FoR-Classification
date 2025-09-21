@@ -153,17 +153,24 @@ jobs:
           cat app_registry.yaml
           echo "=== End of app_registry.yaml ==="
 
-      - name: Update app_registry.yaml with image tag
+      - name: Update app_registry.yaml with image tag and environment variables
         run: |
-          echo "=== Updating app_registry.yaml with main-SHA tag ==="
+          echo "=== Updating app_registry.yaml ==="
           # Use the main-SHA tag format that was actually pushed
           IMAGE_TAG="main-${{ github.sha }}"
 
           echo "SHA: ${{ github.sha }}"
           echo "Using image tag: $IMAGE_TAG"
 
-          echo "=== Updating app_registry.yaml ==="
+          echo "=== Updating image tag ==="
           sed -i "s|tag: latest|tag: $IMAGE_TAG|g" app_registry.yaml
+
+          echo "=== Updating environment variables with actual values ==="
+          # Replace template variables with actual values from GitHub secrets
+          sed -i "s|\${SUPABASE_URL}|${{ secrets.SUPABASE_URL }}|g" app_registry.yaml
+          sed -i "s|\${SUPABASE_KEY}|${{ secrets.SUPABASE_KEY }}|g" app_registry.yaml
+          sed -i "s|\${ADMIN_EMAIL}|${{ secrets.ADMIN_EMAIL }}|g" app_registry.yaml
+
           echo "Updated app_registry.yaml:"
           cat app_registry.yaml
 
@@ -240,15 +247,18 @@ jobs:
         run: |
           set -e
           echo "=== Starting deployment ==="
-          echo "App name from secrets: ${{ secrets.DO_APP_NAME }}"
+          APP_NAME="${{ secrets.DO_APP_NAME }}"
+          echo "App name: $APP_NAME"
 
-          # Check if app exists
-          if doctl apps list --format Name --no-header | grep -q "${{ secrets.DO_APP_NAME }}"; then
-            echo "Found existing app: ${{ secrets.DO_APP_NAME }}"
+          # Check if app exists and get its ID
+          APP_ID=$(doctl apps list --format ID,Name --no-header | grep "$APP_NAME" | awk '{print $1}')
+
+          if [ -n "$APP_ID" ]; then
+            echo "Found existing app: $APP_NAME (ID: $APP_ID)"
             echo "Updating existing app..."
-            doctl apps update "${{ secrets.DO_APP_NAME }}" --spec app_registry.yaml --wait --verbose
+            doctl apps update "$APP_ID" --spec app_registry.yaml --wait --verbose
           else
-            echo "App ${{ secrets.DO_APP_NAME }} not found. Creating new app..."
+            echo "App $APP_NAME not found. Creating new app..."
             doctl apps create --spec app_registry.yaml --wait --verbose
           fi
 
@@ -256,10 +266,33 @@ jobs:
 
       - name: Get app URL
         run: |
-          APP_URL=$(doctl apps get ${{ secrets.DO_APP_NAME }} --format LiveURL --no-header)
-          echo "Application deployed successfully!"
-          echo "App URL: $APP_URL"
-          echo "::notice title=Deployment Success::Application deployed to $APP_URL"
+          echo "=== Getting app information ==="
+          APP_NAME="${{ secrets.DO_APP_NAME }}"
+          echo "App name: $APP_NAME"
+
+          # Get app ID from app name since doctl apps get requires ID, not name
+          APP_ID=$(doctl apps list --format ID,Name --no-header | grep "$APP_NAME" | awk '{print $1}')
+
+          if [ -n "$APP_ID" ]; then
+            echo "App ID: $APP_ID"
+
+            # Get the live URL using the app ID
+            APP_URL=$(doctl apps get "$APP_ID" --format LiveURL --no-header 2>/dev/null || echo "")
+
+            if [ -n "$APP_URL" ]; then
+              echo "Application deployed successfully!"
+              echo "App URL: $APP_URL"
+              echo "::notice title=Deployment Success::Application deployed to $APP_URL"
+            else
+              echo "⚠️  App deployed but URL not yet available (app may still be building)"
+              echo "Check app status with: doctl apps get $APP_ID"
+            fi
+          else
+            echo "❌ Could not find app with name: $APP_NAME"
+            echo "Available apps:"
+            doctl apps list --format Name,Status,LiveURL
+            exit 1
+          fi
 
   # Notify on failure
   notify:
