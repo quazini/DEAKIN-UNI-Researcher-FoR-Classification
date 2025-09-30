@@ -54,11 +54,12 @@ jobs:
 
           echo "=== Testing connections in container ==="
           docker run --rm \
+            --entrypoint python \
             -e SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
             -e SUPABASE_KEY="${{ secrets.SUPABASE_KEY }}" \
             -e ADMIN_EMAIL="${{ secrets.ADMIN_EMAIL }}" \
             -e DEFAULT_WEBHOOK_URL="https://mbcrc.app.n8n.cloud/webhook/530ec5fa-656a-4c9c-bb05-5be7ff3bdef2" \
-            test-image python test_connections.py
+            test-image test_connections.py
 
           echo "=== Testing container startup ==="
           docker run --rm --name test-container -d \
