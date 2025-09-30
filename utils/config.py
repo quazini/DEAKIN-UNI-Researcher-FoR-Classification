@@ -93,6 +93,15 @@ class ConfigManager:
         return self.get('DEFAULT_WEBHOOK_URL',
                        default='https://mbcrc.app.n8n.cloud/webhook/530ec5fa-656a-4c9c-bb05-5be7ff3bdef2')
 
+    def get_neo4j_config(self) -> Dict[str, str]:
+        """Get Neo4j configuration from Streamlit secrets"""
+        return {
+            'uri': st.secrets["neo4j"]["NEO4J_URI"],
+            'user': st.secrets["neo4j"]["NEO4J_USERNAME"],
+            'password': st.secrets["neo4j"]["NEO4J_PASSWORD"],
+            'database': st.secrets["neo4j"]["NEO4J_DATABASE"]
+        }
+
     def is_production(self) -> bool:
         """Check if running in production"""
         return self.get('APP_ENV', default='development').lower() == 'production'
@@ -104,7 +113,7 @@ class ConfigManager:
         # Safe values to show
         safe_keys = [
             'APP_NAME', 'APP_ENV', 'SESSION_TIMEOUT_MINUTES',
-            'DEFAULT_WEBHOOK_URL', 'ADMIN_EMAIL'
+            'DEFAULT_WEBHOOK_URL', 'ADMIN_EMAIL', 'NEO4J_URI', 'NEO4J_USERNAME', 'NEO4J_DATABASE'
         ]
 
         for key in safe_keys:

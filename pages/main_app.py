@@ -14,6 +14,7 @@ from components.classification_display import display_full_classification_result
 from components.researcher_profile import display_complete_researcher_profile
 from utils.flexible_auth import require_authentication, logout, check_authentication
 from utils.config import get_config
+from utils.neo4j_service import get_neo4j_service, clear_researcher_cache
 
 # Configure Streamlit page
 st.set_page_config(
@@ -63,13 +64,17 @@ def send_to_webhook(message: str, session_id: str, webhook_url: str) -> Optional
             return response
 
     except TimeoutError:
-        st.error("⏰ Request timed out. The classification process is taking longer than expected.")
+        st.error("There was an error processing your request. Please verify that the researcher name is correct. If you're certain the name is accurate, try submitting your request again.")
         return None
     except ConnectionError:
         st.error("❌ Failed to connect to the classification service. Please check the webhook URL.")
         return None
     except ValueError as e:
-        st.error(f"❌ Service error: {str(e)}")
+        # Check if it's a JSON parsing error specifically
+        if "Invalid JSON response" in str(e) or "Invalid response format" in str(e):
+            st.error("There was an error processing your request. Please verify that the researcher name is correct. If you're certain the name is accurate, try submitting your request again.")
+        else:
+            st.error(f"❌ Service error: {str(e)}")
         return None
     except Exception as e:
         st.error(f"❌ Unexpected error: {str(e)}")
@@ -123,6 +128,77 @@ with st.sidebar:
     if st.button("🚪 Logout", use_container_width=True):
         logout()
         st.switch_page("login.py")
+
+    st.divider()
+
+    # Researcher Lookup Section
+    st.header("🔍 Researcher Lookup")
+
+    # Initialize Neo4j service
+    neo4j_service = get_neo4j_service()
+
+    # Check connection status
+    if neo4j_service.is_connected():
+        # Get researchers list
+        researchers = neo4j_service.get_researchers()
+
+        if researchers:
+            # Create options for selectbox (name as display, full dict as value)
+            researcher_options = ["Select a researcher..."] + [r['name'] for r in researchers]
+
+            selected_researcher_name = st.selectbox(
+                "Choose researcher:",
+                options=researcher_options,
+                index=0,
+                help="Select a researcher to auto-populate the chat input"
+            )
+
+            # Handle researcher selection
+            if selected_researcher_name != "Select a researcher...":
+                # Find the selected researcher
+                selected_researcher = next(
+                    (r for r in researchers if r['name'] == selected_researcher_name),
+                    None
+                )
+
+                if selected_researcher:
+                    # Store in session state
+                    st.session_state['selected_researcher'] = selected_researcher
+
+                    # Show researcher info
+                    st.info(f"**Selected:** {selected_researcher['name']}\n**Contact ID:** {selected_researcher['contactRecordId']}")
+
+                    # Button to populate chat input
+                    if st.button("🗨️ Query this researcher", use_container_width=True):
+                        # Store the query to be used in chat input
+                        st.session_state['auto_query'] = f"Who is {selected_researcher['name']}?"
+                        st.rerun()
+
+            # Show researcher count
+            st.caption(f"📊 {len(researchers)} researchers available")
+
+            # Cache management
+            if st.button("🔄 Refresh researcher list", help="Clear cache and reload researchers"):
+                clear_researcher_cache()
+                st.rerun()
+        else:
+            st.warning("No researchers found in the database.")
+
+        # Connection status indicator
+        status = neo4j_service.get_connection_status()
+        if status['status'] == 'connected':
+            st.success(f"✅ Neo4j: {status['details']}")
+        else:
+            st.error(f"❌ Neo4j: {status['message']}")
+    else:
+        st.error("❌ Neo4j database not connected")
+        st.caption("Check environment variables: NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD")
+
+        # Test connection button
+        if st.button("🔧 Test Neo4j Connection"):
+            # Reinitialize service by clearing the cache
+            clear_researcher_cache()
+            st.rerun()
 
     st.divider()
 
@@ -237,7 +313,16 @@ with chat_container:
 
 # Message input
 if not st.session_state.is_processing:
-    if prompt := st.chat_input("Type your message here... (e.g., 'Who is Dr. Jane Smith?')"):
+    # Check for auto-query from researcher selection
+    auto_query = st.session_state.get('auto_query', '')
+    if auto_query:
+        # Use auto query and clear it
+        prompt = auto_query
+        st.session_state['auto_query'] = ''
+    else:
+        prompt = st.chat_input("Type your message here... (e.g., 'Who is Dr. Jane Smith?')")
+
+    if prompt:
         # Add user message to history
         user_message = {
             "role": "user",

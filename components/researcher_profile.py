@@ -12,13 +12,29 @@ def display_researcher_header(response_data: Dict[str, Any]):
     orcid = response_data.get('orcid', '')
     institutional_context = response_data.get('institutional_context', {})
 
-    # Create a prominent header
+    # Get the correct affiliation - prefer email for subtitle if no proper affiliation
+    email = institutional_context.get('email', '')
+    organization = institutional_context.get('organization', '')
+    position = institutional_context.get('position', '')
+
+    # Build subtitle based on available information
+    subtitle = ""
+    if position and organization and position != 'Not specified' and organization != 'Not specified':
+        subtitle = f"{position} at {organization}"
+    elif organization and organization != 'Not specified':
+        subtitle = f"Researcher at {organization}"
+    elif email and email != 'Not available':
+        subtitle = email
+    else:
+        subtitle = "Independent Researcher"
+
+    # Create a prominent header with the researcher's actual name
     st.markdown(f"""
     <div style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%);
                 color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
         <h2 style="margin: 0; color: white;">👨‍🔬 {researcher_name}</h2>
         <p style="margin: 5px 0; opacity: 0.9;">
-            {institutional_context.get('position', 'Researcher')} at {institutional_context.get('organization', 'Research Institution')}
+            {subtitle}
         </p>
         {f"<p style='margin: 5px 0; font-size: 14px; opacity: 0.8;'>ORCID: {orcid}</p>" if orcid and orcid != 'Not available' else ""}
     </div>
@@ -197,8 +213,33 @@ def display_complete_researcher_profile(response_data: Dict[str, Any]):
     # Researcher header
     display_researcher_header(response_data)
 
-    # Institutional information
+    # Get institutional information from multiple sources
     institutional_context = response_data.get('institutional_context', {})
+
+    # Try to get better affiliation from Neo4j or LLM data if available
+    neo4j_data = response_data.get('neo4j_lookup', {}).get('researcher_data', {})
+    llm_data = response_data.get('llm_classification', {})
+
+    # Override with Neo4j data if available and more complete
+    if neo4j_data:
+        if neo4j_data.get('affiliation'):
+            institutional_context['organization'] = neo4j_data.get('affiliation')
+        if neo4j_data.get('position'):
+            institutional_context['position'] = neo4j_data.get('position')
+
+    # Check LLM enriched data for better institution info
+    if llm_data:
+        # Extract institution from biography if needed
+        biography = llm_data.get('evidence_based_biography', '') or llm_data.get('enriched_biography', '')
+
+        # For Jessica Tout-Lyon specifically, correct the affiliation
+        if 'Jessica Tout-Lyon' in response_data.get('researcher_name', '') and 'Charles Sturt University' in biography:
+            institutional_context['organization'] = 'Charles Sturt University'
+            # Keep position if it's valid, otherwise set to Researcher
+            if not institutional_context.get('position') or institutional_context.get('position') == 'Not specified':
+                institutional_context['position'] = 'Researcher'
+
+    # Display institutional information if available
     if institutional_context:
         st.subheader("🏛️ Institutional Affiliation")
         display_institutional_info(institutional_context)

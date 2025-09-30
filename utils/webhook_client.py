@@ -171,12 +171,7 @@ class WebhookClient:
             'researcher_name': self.extract_researcher_name_from_response(response),
             'classification_timestamp': response.get('classification_timestamp', ''),
             'classification_confidence': response.get('classification_confidence', 'medium'),
-            'institutional_context': {
-                'organization': 'Deakin University',  # Default based on biography
-                'position': 'Professor',
-                'department': 'School of Life and Environmental Sciences',
-                'email': 'Not available'
-            },
+            'institutional_context': self.extract_institutional_context(response),
             'institutional_data_complete': True,
             'data_sources_used': ['n8n_workflow'],
             'search_quality': {
@@ -247,11 +242,91 @@ class WebhookClient:
         """Extract researcher name from biography or other fields"""
         biography = response.get('enriched_biography', '')
 
-        # Try to extract name from biography (looks for "Professor [Name]")
+        if not biography:
+            return "Researcher"
+
         import re
-        name_match = re.search(r'Professor\s+([A-Z][a-z]+\s+[A-Z][a-z]+)', biography)
-        if name_match:
-            return name_match.group(1)
+
+        # Try multiple patterns to extract names
+        name_patterns = [
+            r'Dr\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:-[A-Z][a-z]+)*)',  # Dr Jessica Tout-Lyon
+            r'Professor\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:-[A-Z][a-z]+)*)',  # Professor Jessica Tout-Lyon
+            r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:-[A-Z][a-z]+)*)\s+is\s+a\s+researcher',  # Jessica Tout-Lyon is a researcher
+        ]
+
+        for pattern in name_patterns:
+            match = re.search(pattern, biography)
+            if match:
+                name = match.group(1).strip()
+                # Validate the name (should be reasonable length)
+                if 3 <= len(name) <= 50 and ' ' in name or '-' in name:
+                    return name
 
         # Fallback
         return "Researcher"
+
+    def extract_institutional_context(self, response: Dict[Any, Any]) -> Dict[str, str]:
+        """Extract institutional context from response data intelligently"""
+        biography = response.get('enriched_biography', '')
+        researcher_name = self.extract_researcher_name_from_response(response)
+
+        # Default values
+        context = {
+            'organization': 'Not specified',
+            'position': 'Researcher',
+            'department': 'Not specified',
+            'email': 'Not available'
+        }
+
+        if not biography:
+            return context
+
+        import re
+
+        # Extract university/institution from biography
+        # Look for patterns like "affiliated with X University" or "at X University"
+        university_patterns = [
+            r'affiliated with ([^,\.]+University[^,\.]*)',
+            r'at ([^,\.]+University[^,\.]*)',
+            r'([A-Za-z\s]+University)',
+        ]
+
+        for pattern in university_patterns:
+            match = re.search(pattern, biography, re.IGNORECASE)
+            if match:
+                university = match.group(1).strip()
+                # Clean up the university name
+                if university and len(university) > 5:  # Avoid too short matches
+                    context['organization'] = university
+                    break
+
+        # Extract position from biography
+        position_patterns = [
+            r'(Professor|Dr\.?\s*\w+|Researcher|Associate Professor|Assistant Professor)',
+            r'is a ([^,]+researcher)',
+        ]
+
+        for pattern in position_patterns:
+            match = re.search(pattern, biography, re.IGNORECASE)
+            if match:
+                position = match.group(1).strip()
+                if position and position.lower() != 'dr':
+                    context['position'] = position
+                    break
+
+        # Extract department/school if mentioned
+        dept_patterns = [
+            r'School of ([^,\.]+)',
+            r'Department of ([^,\.]+)',
+            r'Faculty of ([^,\.]+)',
+        ]
+
+        for pattern in dept_patterns:
+            match = re.search(pattern, biography, re.IGNORECASE)
+            if match:
+                department = match.group(1).strip()
+                if department:
+                    context['department'] = f"School of {department}"
+                    break
+
+        return context

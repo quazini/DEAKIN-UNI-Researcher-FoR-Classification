@@ -5,6 +5,6 @@ database_setup.sql
 deploy.sh
 DEPLOYMENT.md
 DIGITAL_OCEAN_SECRETS_SETUP.md
-
+test_local.sh
 
 Researcher_For_Classification.json
