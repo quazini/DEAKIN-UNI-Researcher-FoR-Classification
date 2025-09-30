@@ -23,6 +23,15 @@ class ConfigManager:
     def __init__(self):
         self._load_env_file()
 
+    def _secrets_file_exists(self) -> bool:
+        """Check if any Streamlit secrets file exists"""
+        secrets_paths = [
+            Path('.streamlit/secrets.toml'),
+            Path('/home/streamlit/.streamlit/secrets.toml'),
+            Path('/app/.streamlit/secrets.toml')
+        ]
+        return any(path.exists() for path in secrets_paths)
+
     def _load_env_file(self):
         """Load .env file if it exists"""
         env_file = Path(".env")
@@ -51,21 +60,22 @@ class ConfigManager:
         if value:
             return value
 
-        # Try Streamlit secrets with path
-        if fallback_path:
+        # Try Streamlit secrets with path (only if secrets file exists)
+        if fallback_path and self._secrets_file_exists():
             try:
                 secrets_value = st.secrets
                 for part in fallback_path.split('.'):
                     secrets_value = secrets_value[part]
                 return str(secrets_value)
-            except (KeyError, AttributeError):
+            except (KeyError, AttributeError, FileNotFoundError, Exception):
                 pass
 
-        # Try Streamlit secrets direct key
-        try:
-            return str(st.secrets[key])
-        except (KeyError, AttributeError):
-            pass
+        # Try Streamlit secrets direct key (only if secrets file exists)
+        if self._secrets_file_exists():
+            try:
+                return str(st.secrets[key])
+            except (KeyError, AttributeError, FileNotFoundError, Exception):
+                pass
 
         if default is not None:
             return default
