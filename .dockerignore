@@ -57,12 +57,11 @@ logs/
 
 # Test files
 tests/
-test_*.py
-!test_connections.py  # Exception: keep this for container health check
 *_test.py
 pytest_cache/
 .coverage
 htmlcov/
+# Note: test_connections.py is kept for container health checks
 
 # Temporary files
 tmp/
