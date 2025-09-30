@@ -94,13 +94,23 @@ class ConfigManager:
                        default='https://mbcrc.app.n8n.cloud/webhook/530ec5fa-656a-4c9c-bb05-5be7ff3bdef2')
 
     def get_neo4j_config(self) -> Dict[str, str]:
-        """Get Neo4j configuration from Streamlit secrets"""
-        return {
-            'uri': st.secrets["neo4j"]["NEO4J_URI"],
-            'user': st.secrets["neo4j"]["NEO4J_USERNAME"],
-            'password': st.secrets["neo4j"]["NEO4J_PASSWORD"],
-            'database': st.secrets["neo4j"]["NEO4J_DATABASE"]
-        }
+        """Get Neo4j configuration from environment or secrets"""
+        try:
+            # Try environment variables first (for production deployment)
+            return {
+                'uri': self.get('NEO4J_URI'),
+                'user': self.get('NEO4J_USERNAME'),
+                'password': self.get('NEO4J_PASSWORD'),
+                'database': self.get('NEO4J_DATABASE', default='neo4j')
+            }
+        except ValueError:
+            # Fallback to Streamlit secrets (for local development)
+            return {
+                'uri': st.secrets["neo4j"]["NEO4J_URI"],
+                'user': st.secrets["neo4j"]["NEO4J_USERNAME"],
+                'password': st.secrets["neo4j"]["NEO4J_PASSWORD"],
+                'database': st.secrets["neo4j"]["NEO4J_DATABASE"]
+            }
 
     def is_production(self) -> bool:
         """Check if running in production"""
