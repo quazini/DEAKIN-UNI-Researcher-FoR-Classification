@@ -58,6 +58,7 @@ logs/
 # Test files
 tests/
 test_*.py
+!test_connections.py  # Exception: keep this for container health check
 *_test.py
 pytest_cache/
 .coverage
