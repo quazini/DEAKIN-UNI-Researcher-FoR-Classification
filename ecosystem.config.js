@@ -12,9 +12,9 @@
 module.exports = {
   apps: [{
     name: 'for-classification',
-    script: 'streamlit',
+    script: '/home/ubuntu/.local/bin/streamlit',
     args: 'run login.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true',
-    interpreter: 'python3',
+    interpreter: 'none',  // streamlit is already a Python script with shebang
 
     // Working directory
     cwd: './',

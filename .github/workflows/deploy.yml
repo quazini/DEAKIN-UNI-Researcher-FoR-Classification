@@ -103,7 +103,7 @@ jobs:
             git reset --hard origin/main
 
             echo "=== Updating Python dependencies ==="
-            pip3 install --user -r requirements.txt --quiet
+            pip3 install --user -r requirements.txt --quiet --break-system-packages
 
             echo "=== Creating/updating .env file ==="
             cat > .env << EOF
@@ -129,6 +129,9 @@ jobs:
             mkdir -p logs
 
             echo "=== Restarting PM2 process ==="
+            # Stop old process if it exists (you may have streamlit-app from manual setup)
+            pm2 delete streamlit-app 2>/dev/null || echo "No old streamlit-app process"
+
             # Check if PM2 process exists
             if pm2 describe for-classification > /dev/null 2>&1; then
               echo "Process exists, reloading..."
