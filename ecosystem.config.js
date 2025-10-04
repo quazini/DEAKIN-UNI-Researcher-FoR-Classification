@@ -12,15 +12,18 @@
 module.exports = {
   apps: [{
     name: 'for-classification',
-    script: '/home/ubuntu/.local/bin/streamlit',
+    script: 'streamlit',
     args: 'run login.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true',
-    interpreter: 'none',  // streamlit is already a Python script with shebang
+    interpreter: 'none',
 
     // Working directory
     cwd: './',
 
     // Environment variables
     env: {
+      // Add .local/bin to PATH so PM2 can find streamlit
+      PATH: '/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+
       // Streamlit configuration
       STREAMLIT_SERVER_PORT: '8501',
       STREAMLIT_SERVER_ADDRESS: '0.0.0.0',
