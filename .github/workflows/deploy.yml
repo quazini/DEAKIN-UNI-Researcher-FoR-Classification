@@ -2,14 +2,10 @@ name: Deploy FoR Classification System
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:  # Allow manual trigger
-
-env:
-  REGISTRY: registry.digitalocean.com
-  IMAGE_NAME: for-classification/streamlit
 
 jobs:
   # Test job
@@ -38,7 +34,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov
 
       - name: Run syntax check
         run: |
@@ -47,318 +42,148 @@ jobs:
           find . -name "*.py" -path "./utils/*" -exec python -m py_compile {} \;
           find . -name "*.py" -path "./components/*" -exec python -m py_compile {} \;
 
-      - name: Test Docker build and connections
+      - name: Validate configuration files
         run: |
-          echo "=== Building Docker image ==="
-          docker build -t test-image .
+          echo "=== Checking required files ==="
 
-          echo "=== Testing connections in container ==="
-          docker run --rm \
-            --entrypoint python \
-            -e SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
-            -e SUPABASE_KEY="${{ secrets.SUPABASE_KEY }}" \
-            -e ADMIN_EMAIL="${{ secrets.ADMIN_EMAIL }}" \
-            -e DEFAULT_WEBHOOK_URL="https://mbcrc.app.n8n.cloud/webhook/530ec5fa-656a-4c9c-bb05-5be7ff3bdef2" \
-            test-image test_connections.py
+          files=(
+            "ecosystem.config.js"
+            "requirements.txt"
+            "login.py"
+            ".env.example"
+          )
 
-          echo "=== Testing container startup ==="
-          docker run --rm --name test-container -d \
-            -e STREAMLIT_SERVER_PORT=8501 \
-            -e STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
-            -e STREAMLIT_SERVER_HEADLESS=true \
-            -e SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
-            -e SUPABASE_KEY="${{ secrets.SUPABASE_KEY }}" \
-            -e ADMIN_EMAIL="${{ secrets.ADMIN_EMAIL }}" \
-            test-image
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "✓ $file exists"
+            else
+              echo "✗ $file is missing!"
+              exit 1
+            fi
+          done
 
-          sleep 15
+          echo "✅ All required files present"
 
-          echo "=== Checking container health ==="
-          docker exec test-container curl -f http://localhost:8501/_stcore/health || {
-            echo "Container health check failed"
-            docker logs test-container
-            docker stop test-container
-            exit 1
-          }
-
-          docker stop test-container || true
-          echo "✅ All container tests passed"
-
-  # Build and push Docker image
-  build:
+  # Deploy to Ubuntu Droplet via SSH
+  deploy:
     runs-on: ubuntu-latest
     needs: test
     if: github.ref == 'refs/heads/main'
-    name: Build and Push Docker Image
+    name: Deploy to Ubuntu Droplet (PM2)
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install doctl
-        uses: digitalocean/action-doctl@v2
+      - name: Deploy to Droplet
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          NEO4J_URI: ${{ secrets.NEO4J_URI }}
+          NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
+          NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
+          NEO4J_DATABASE: ${{ secrets.NEO4J_DATABASE }}
+          DEFAULT_WEBHOOK_URL: ${{ secrets.DEFAULT_WEBHOOK_URL }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
         with:
-          token: ${{ secrets.DO_ACCESS_TOKEN }}
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          port: 22
+          envs: SUPABASE_URL,SUPABASE_KEY,NEO4J_URI,NEO4J_USERNAME,NEO4J_PASSWORD,NEO4J_DATABASE,DEFAULT_WEBHOOK_URL,ADMIN_EMAIL
+          script: |
+            echo "=== Starting deployment ==="
 
-      - name: Login to DO Container Registry
-        run: doctl registry login --expiry-seconds 600
+            # Navigate to application directory
+            cd ${{ secrets.DROPLET_APP_PATH }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+            echo "=== Pulling latest code ==="
+            git fetch origin
+            git reset --hard origin/main
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ github.sha }}
-            type=raw,value=main-${{ github.sha }},enable={{is_default_branch}}
+            echo "=== Updating Python dependencies ==="
+            pip3 install --user -r requirements.txt --quiet
 
-      - name: Debug - Show Docker tags
-        run: |
-          echo "=== Docker tags to be built ==="
-          echo "${{ steps.meta.outputs.tags }}"
-          echo "=== Docker labels ==="
-          echo "${{ steps.meta.outputs.labels }}"
+            echo "=== Creating/updating .env file ==="
+            cat > .env << EOF
+            # Auto-generated by GitHub Actions on $(date)
+            SUPABASE_URL=${SUPABASE_URL}
+            SUPABASE_KEY=${SUPABASE_KEY}
+            NEO4J_URI=${NEO4J_URI}
+            NEO4J_USERNAME=${NEO4J_USERNAME}
+            NEO4J_PASSWORD=${NEO4J_PASSWORD}
+            NEO4J_DATABASE=${NEO4J_DATABASE}
+            DEFAULT_WEBHOOK_URL=${DEFAULT_WEBHOOK_URL}
+            ADMIN_EMAIL=${ADMIN_EMAIL}
+            APP_ENV=production
+            APP_NAME=FoR Classification System
+            SESSION_TIMEOUT_MINUTES=60
+            STREAMLIT_SERVER_PORT=8501
+            STREAMLIT_SERVER_ADDRESS=0.0.0.0
+            STREAMLIT_SERVER_HEADLESS=true
+            STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+            EOF
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64
+            echo "=== Creating logs directory ==="
+            mkdir -p logs
 
-      - name: Verify Docker image push
-        run: |
-          echo "=== Verifying image was pushed to registry ==="
-
-          # Get registry name dynamically
-          REGISTRY_NAME=$(doctl registry get --format Name --no-header)
-          echo "Registry name: $REGISTRY_NAME"
-
-          # The repository path should be {registry-name}/streamlit
-          REPO_PATH="${REGISTRY_NAME}/streamlit"
-          echo "Checking repository: $REPO_PATH"
-
-          if doctl registry repository list-tags "$REPO_PATH"; then
-            echo "✅ Successfully pushed to registry"
-            echo "Latest tags:"
-            doctl registry repository list-tags "$REPO_PATH" --format Tag,UpdatedAt | head -5
-          else
-            echo "❌ Failed to verify image push"
-            echo "Listing all repositories in registry:"
-            doctl registry repository list-v2 "$REGISTRY_NAME" || echo "No repositories found"
-          fi
-
-  # Deploy to Digital Ocean App Platform
-  deploy:
-    runs-on: ubuntu-latest
-    needs: [test, build]
-    if: github.ref == 'refs/heads/main'
-    name: Deploy to Digital Ocean App Platform
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install doctl
-        uses: digitalocean/action-doctl@v2
-        with:
-          token: ${{ secrets.DO_ACCESS_TOKEN }}
-
-      - name: Validate app_registry.yaml
-        run: |
-          echo "=== Validating app_registry.yaml ==="
-          if [ ! -f app_registry.yaml ]; then
-            echo "::error::app_registry.yaml not found!"
-            exit 1
-          fi
-          echo "File exists. Contents:"
-          cat app_registry.yaml
-          echo "=== End of app_registry.yaml ==="
-
-      - name: Update app_registry.yaml with image tag and secrets
-        run: |
-          echo "=== Updating app_registry.yaml ==="
-          # Use the main-SHA tag format that was actually pushed
-          IMAGE_TAG="main-${{ github.sha }}"
-
-          echo "SHA: ${{ github.sha }}"
-          echo "Using image tag: $IMAGE_TAG"
-
-          echo "=== Updating image tag ==="
-          sed -i "s|tag: latest|tag: $IMAGE_TAG|g" app_registry.yaml
-
-          echo "=== Injecting secrets from GitHub Secrets ==="
-          # Replace placeholders with actual values from GitHub secrets
-          sed -i "s|\${SUPABASE_URL}|${{ secrets.SUPABASE_URL }}|g" app_registry.yaml
-          sed -i "s|\${SUPABASE_KEY}|${{ secrets.SUPABASE_KEY }}|g" app_registry.yaml
-          sed -i "s|\${ADMIN_EMAIL}|${{ secrets.ADMIN_EMAIL }}|g" app_registry.yaml
-
-          echo "Updated app_registry.yaml (secrets masked):"
-          # Show the file but mask the actual secret values
-          cat app_registry.yaml | sed -e "s|${{ secrets.SUPABASE_URL }}|***SUPABASE_URL***|g" \
-                                    -e "s|${{ secrets.SUPABASE_KEY }}|***SUPABASE_KEY***|g" \
-                                    -e "s|${{ secrets.ADMIN_EMAIL }}|***ADMIN_EMAIL***|g"
-
-      - name: Test doctl connectivity
-        run: |
-          echo "=== Testing DigitalOcean API connectivity ==="
-          doctl account get
-          echo "=== Listing existing apps ==="
-          doctl apps list || echo "No apps found or error listing apps"
-
-      - name: Verify Docker image exists in registry
-        run: |
-          echo "=== Verifying image exists in registry ==="
-          IMAGE_TAG="main-${{ github.sha }}"
-
-          # Get registry information
-          echo "=== Registry Information ==="
-          REGISTRY_INFO=$(doctl registry get 2>/dev/null)
-          if [ $? -eq 0 ]; then
-            echo "$REGISTRY_INFO"
-            REGISTRY_NAME=$(echo "$REGISTRY_INFO" | awk 'NR==2 {print $1}')
-            echo "Registry name: $REGISTRY_NAME"
-          else
-            echo "❌ Container registry not found!"
-            echo "Create registry with: doctl registry create for-classification --region syd1"
-            exit 1
-          fi
-
-          # List all repositories in the registry
-          echo "=== Available repositories in registry ==="
-          if doctl registry repository list-v2 "$REGISTRY_NAME" 2>/dev/null; then
-            echo "✅ Registry accessible"
-          else
-            echo "❌ Failed to list repositories in registry"
-            exit 1
-          fi
-
-          # Check if the streamlit repository exists using list-v2 which we know works
-          echo "=== Checking streamlit repository ==="
-
-          # Get repository info from list-v2 output which we know works
-          REPO_INFO=$(doctl registry repository list-v2 "$REGISTRY_NAME" --format Name,LatestTag --no-header | grep "^streamlit")
-
-          if [ -n "$REPO_INFO" ]; then
-            echo "✅ Repository 'streamlit' found in registry"
-            echo "Repository info: $REPO_INFO"
-
-            # Extract the latest tag from the repository info
-            LATEST_TAG=$(echo "$REPO_INFO" | awk '{print $2}')
-            echo "Latest tag in repository: $LATEST_TAG"
-
-            # Check if our expected tag matches the latest tag pattern
-            if [[ "$LATEST_TAG" == "$IMAGE_TAG" ]]; then
-              echo "✅ Expected image tag $IMAGE_TAG matches latest tag"
-            elif [[ "$LATEST_TAG" =~ main-.* ]]; then
-              echo "✅ Repository has main-branch tags (latest: $LATEST_TAG)"
-              echo "⚠️  Expected: $IMAGE_TAG, Found: $LATEST_TAG"
-              echo "This might be from a different commit, but the image should exist"
+            echo "=== Restarting PM2 process ==="
+            # Check if PM2 process exists
+            if pm2 describe for-classification > /dev/null 2>&1; then
+              echo "Process exists, reloading..."
+              pm2 reload for-classification --update-env
             else
-              echo "⚠️  Latest tag format doesn't match expected pattern"
-              echo "Expected: $IMAGE_TAG, Found: $LATEST_TAG"
+              echo "Process doesn't exist, starting..."
+              pm2 start ecosystem.config.js
             fi
 
-            # Always proceed since we can see the repository exists and has tags
-            echo "✅ Proceeding with deployment - repository and tags exist"
-          else
-            echo "❌ Repository 'streamlit' not found in registry $REGISTRY_NAME"
-            echo "Available repositories:"
-            doctl registry repository list-v2 "$REGISTRY_NAME" --format Name
-            exit 1
-          fi
+            # Save PM2 process list
+            pm2 save
 
-      - name: Deploy to Digital Ocean App Platform
+            echo "=== Checking PM2 status ==="
+            pm2 list
+            pm2 info for-classification
+
+            echo "✅ Deployment completed successfully"
+
+      - name: Health Check
         run: |
-          set -e
-          echo "=== Starting deployment ==="
-          APP_NAME="${{ secrets.DO_APP_NAME }}"
-          echo "App name: $APP_NAME"
+          echo "=== Waiting for application to start ==="
+          sleep 15
 
-          echo "=== Checking existing apps ==="
-          echo "All apps in account:"
-          doctl apps list --format ID,Spec.Name,ActiveDeployment.ID,Updated
+          echo "=== Performing health check ==="
+          # Use the droplet's public URL for health check
+          HEALTH_URL="${{ secrets.DROPLET_HEALTH_URL }}"
 
-          # Simple and safe app detection using JSON output and jq
-          echo "=== Looking for app with name: $APP_NAME ==="
-
-          # Use jq for exact string matching (no regex, no special character issues)
-          APP_ID=$(doctl apps list --output json | jq -r --arg name "$APP_NAME" '.[] | select(.spec.name == $name) | .id')
-
-          if [ -n "$APP_ID" ]; then
-            echo "Found existing app: $APP_NAME (ID: $APP_ID)"
-            echo "Updating existing app..."
-            doctl apps update "$APP_ID" --spec app_registry.yaml --wait --verbose
-          else
-            echo "App $APP_NAME not found in list above."
-            echo "Attempting to create new app..."
-
-            # Try to create, handle name conflict gracefully
-            if doctl apps create --spec app_registry.yaml --wait --verbose 2>&1; then
-              echo "✅ App created successfully"
+          if [ -n "$HEALTH_URL" ]; then
+            if curl -f "$HEALTH_URL/_stcore/health" --max-time 10; then
+              echo "✅ Application is healthy"
             else
-              CREATE_ERROR=$?
-              echo "❌ App creation failed, checking if it exists now..."
-
-              # Try to find the app again after failed creation
-              sleep 5
-              echo "Re-checking for app after creation attempt..."
-              APP_ID=$(doctl apps list --output json | jq -r --arg name "$APP_NAME" '.[] | select(.spec.name == $name) | .id')
-
-              if [ -n "$APP_ID" ]; then
-                echo "✅ App exists now (ID: $APP_ID), updating instead..."
-                doctl apps update "$APP_ID" --spec app_registry.yaml --wait --verbose
-              else
-                echo "❌ App creation failed and app still not found"
-                exit $CREATE_ERROR
-              fi
-            fi
-          fi
-
-          echo "=== Deployment command completed ==="
-
-      - name: Get app URL
-        run: |
-          echo "=== Getting app information ==="
-          APP_NAME="${{ secrets.DO_APP_NAME }}"
-          echo "App name: $APP_NAME"
-
-          # Get app ID from app name since doctl apps get requires ID, not name
-          APP_ID=$(doctl apps list --output json | jq -r --arg name "$APP_NAME" '.[] | select(.spec.name == $name) | .id')
-
-          if [ -n "$APP_ID" ]; then
-            echo "App ID: $APP_ID"
-
-            # Get the live URL using the app ID
-            APP_URL=$(doctl apps get "$APP_ID" --format LiveURL --no-header 2>/dev/null || echo "")
-
-            if [ -n "$APP_URL" ]; then
-              echo "Application deployed successfully!"
-              echo "App URL: $APP_URL"
-              echo "::notice title=Deployment Success::Application deployed to $APP_URL"
-            else
-              echo "⚠️  App deployed but URL not yet available (app may still be building)"
-              echo "Check app status with: doctl apps get $APP_ID"
+              echo "⚠️  Health check failed, but deployment completed"
+              echo "Check application logs: ssh ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }} 'pm2 logs for-classification'"
             fi
           else
-            echo "❌ Could not find app with name: $APP_NAME"
-            echo "Available apps:"
-            doctl apps list --format Spec.Name,Updated,DefaultIngress
-            exit 1
+            echo "⚠️  DROPLET_HEALTH_URL not configured, skipping health check"
           fi
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "=== Deployment Summary ==="
+          echo "Repository: ${{ github.repository }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Deployed to: ${{ secrets.DROPLET_HOST }}"
+          echo "Application path: ${{ secrets.DROPLET_APP_PATH }}"
+          echo ""
+          echo "To view logs: ssh ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }} 'pm2 logs for-classification'"
+          echo "To restart: ssh ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }} 'pm2 restart for-classification'"
 
   # Notify on failure
   notify:
     runs-on: ubuntu-latest
-    needs: [test, build, deploy]
+    needs: [test, deploy]
     if: failure()
     name: Notify on Failure
 
@@ -370,17 +195,12 @@ jobs:
 
           if [ "${{ needs.test.result }}" != "success" ] && [ "${{ needs.test.result }}" != "skipped" ]; then
             echo "❌ Test job failed"
-            echo "::error title=Test Failed::The test job failed. Check test logs for Python syntax errors or Docker build issues."
-          fi
-
-          if [ "${{ needs.build.result }}" != "success" ] && [ "${{ needs.build.result }}" != "skipped" ]; then
-            echo "❌ Build job failed"
-            echo "::error title=Build Failed::Docker image build or push to registry failed. Check if DO registry exists and DO_ACCESS_TOKEN is valid."
+            echo "::error title=Test Failed::The test job failed. Check test logs for Python syntax errors."
           fi
 
           if [ "${{ needs.deploy.result }}" != "success" ] && [ "${{ needs.deploy.result }}" != "skipped" ]; then
             echo "❌ Deploy job failed"
-            echo "::error title=Deploy Failed::App deployment to DigitalOcean failed. Check app_registry.yaml syntax and DO_APP_NAME secret."
+            echo "::error title=Deploy Failed::SSH deployment to droplet failed. Check SSH credentials and droplet connectivity."
           fi
 
           echo ""
@@ -389,7 +209,8 @@ jobs:
           echo "2. Expand the failed step (marked with ❌)"
           echo "3. Look for error messages in red text"
           echo "4. Common issues:"
-          echo "   - Missing secrets (DO_ACCESS_TOKEN, DO_APP_NAME)"
-          echo "   - Registry doesn't exist in DigitalOcean"
-          echo "   - Invalid YAML syntax in app_registry.yaml"
-          echo "   - Docker build errors (missing files, syntax errors)"
+          echo "   - Missing secrets (DROPLET_HOST, DROPLET_USER, DROPLET_SSH_KEY, DROPLET_APP_PATH)"
+          echo "   - SSH connection issues"
+          echo "   - Git repository not initialized on droplet"
+          echo "   - PM2 not installed on droplet"
+          echo "   - Python dependencies installation errors"

@@ -205,16 +205,8 @@ with st.sidebar:
     st.header("💡 How to Use")
     st.markdown("""
     **Example queries:**
-    - "Who is Dr. Jane Smith?"
-    - "Classify Professor John Doe"
-    - "Find researcher expertise in biotechnology"
-    - "What are the research areas for Dr. Emily Johnson?"
-
-    **Features:**
-    - 🎯 FoR field classification
-    - 👨‍🔬 Researcher profiles
-    - 📊 Research metrics
-    - 🔍 Confidence indicators
+    - "Who is [researcher name]?"
+    - "What is [researcher name]'s classification?"
     """)
 
     st.divider()

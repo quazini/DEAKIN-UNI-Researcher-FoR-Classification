@@ -168,17 +168,31 @@ class WebhookClient:
                 'confidence_level': response.get('llm_confidence_level', 'medium'),
                 'query_response': f"Classification completed for researcher with {response.get('classification_confidence', 'medium')} confidence."
             },
-            'researcher_name': self.extract_researcher_name_from_response(response),
+            'researcher_name': response.get('researcher_name', 'Unknown Researcher'),
             'classification_timestamp': response.get('classification_timestamp', ''),
             'classification_confidence': response.get('classification_confidence', 'medium'),
-            'institutional_context': self.extract_institutional_context(response),
+            'institutional_context': {
+                'organization': response.get('organization', 'Not specified'),
+                'position': response.get('position', 'Not specified'),
+                'department': response.get('department', 'Not specified'),
+                'email': response.get('email', 'Not available'),
+                'school': response.get('school', 'Not specified')
+            },
             'institutional_data_complete': True,
             'data_sources_used': ['n8n_workflow'],
             'search_quality': {
                 'fuzzy_match_used': False,
                 'confidence_score': 1.0,
                 'match_type': 'exact_match'
-            }
+            },
+            # Add direct field mapping for research metrics
+            'total_publications': response.get('total_publications', 0),
+            'total_citations': response.get('total_citations', 0),
+            'h_index': response.get('h_index', 0),
+            'total_patents': response.get('total_patents', 0),
+            'total_collaborators': response.get('total_collaborators', 0),
+            'total_funding': response.get('total_funding', 0),
+            'orcid': response.get('orcid', '')
         }
 
         # Convert primary classifications

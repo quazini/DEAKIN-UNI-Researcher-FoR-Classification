@@ -22,7 +22,8 @@
       "WebFetch(domain:docs.digitalocean.com)",
       "Bash(./debug-registry.sh)",
       "Bash(doctl auth init:*)",
-      "Bash(env)"
+      "Bash(env)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

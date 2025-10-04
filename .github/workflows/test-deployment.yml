@@ -19,10 +19,13 @@ jobs:
           echo "=== Checking Required Files ==="
 
           files=(
-            "app_registry.yaml"
-            "Dockerfile"
+            "ecosystem.config.js"
             "requirements.txt"
             "login.py"
+            ".env.example"
+            "pages/main_app.py"
+            "utils/webhook_client.py"
+            "utils/config.py"
           )
 
           for file in "${files[@]}"; do
@@ -34,164 +37,180 @@ jobs:
             fi
           done
 
-      - name: Validate YAML syntax
+          echo "✅ All required files present"
+
+      - name: Validate Python syntax
         run: |
-          echo "=== Validating YAML Syntax ==="
-          python3 -m pip install pyyaml
-          python3 - <<'EOF'
-          import yaml
-          import json
+          echo "=== Validating Python Syntax ==="
+          python3 -m py_compile login.py
+          find . -name "*.py" -path "./pages/*" -exec python3 -m py_compile {} \;
+          find . -name "*.py" -path "./utils/*" -exec python3 -m py_compile {} \;
+          find . -name "*.py" -path "./components/*" -exec python3 -m py_compile {} \;
+          echo "✅ Python syntax validation passed"
 
-          with open('app_registry.yaml', 'r') as f:
-              config = yaml.safe_load(f)
+      - name: Validate PM2 ecosystem config
+        run: |
+          echo "=== Validating PM2 Ecosystem Config ==="
 
-          print("YAML is valid!")
-          print("\nConfiguration summary:")
-          print(f"App name: {config.get('name')}")
+          # Install Node.js to validate the config file
+          sudo apt-get update
+          sudo apt-get install -y nodejs npm
 
-          if 'services' in config and config['services']:
-              service = config['services'][0]
-              print(f"Service name: {service.get('name')}")
+          # Install PM2
+          sudo npm install -g pm2
 
-              if 'image' in service:
-                  print("\nImage configuration:")
-                  for k, v in service['image'].items():
-                      print(f"  {k}: {v}")
+          # Validate the ecosystem file
+          if pm2 ecosystem; then
+            echo "✓ PM2 ecosystem command works"
+          fi
 
-              if 'envs' in service:
-                  print(f"\nEnvironment variables: {len(service['envs'])} configured")
+          # Check if our config is valid JavaScript
+          if node -c ecosystem.config.js; then
+            echo "✓ ecosystem.config.js is valid JavaScript"
+          else
+            echo "✗ ecosystem.config.js has syntax errors"
+            exit 1
+          fi
 
-                  # Check for problematic configurations
-                  for env in service['envs']:
-                      if 'type' in env and env['type'].upper() in ['PLAIN', 'SECRET']:
-                          print(f"⚠️  WARNING: {env['key']} has type '{env['type']}' - removing type field")
-          EOF
+          echo "✅ PM2 configuration valid"
 
-  test-docker-build:
+  test-python-setup:
     runs-on: ubuntu-latest
-    name: Test Docker Build
+    name: Test Python Dependencies
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
-      - name: Test Docker build (no push)
+      - name: Install dependencies
         run: |
-          echo "=== Testing Docker Build ==="
-          docker build -t test-image:latest .
+          echo "=== Installing Python Dependencies ==="
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          echo "✅ All dependencies installed successfully"
 
-          echo "=== Docker Build Successful ==="
-          echo "Image size: $(docker images test-image:latest --format '{{.Size}}')"
+      - name: Test imports
+        run: |
+          echo "=== Testing Python Imports ==="
+          python3 -c "import streamlit; print(f'Streamlit version: {streamlit.__version__}')"
+          python3 -c "import requests; print(f'Requests version: {requests.__version__}')"
+          python3 -c "from dotenv import load_dotenv; print('python-dotenv OK')"
+          echo "✅ All imports successful"
 
-  test-doctl-connection:
+  test-ssh-connection:
     runs-on: ubuntu-latest
-    name: Test DigitalOcean Connection
+    name: Test SSH Connection to Droplet
     if: github.event_name == 'workflow_dispatch'  # Only on manual trigger
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install doctl
-        uses: digitalocean/action-doctl@v2
+      - name: Test SSH connectivity
+        uses: appleboy/ssh-action@v1.0.0
         with:
-          token: ${{ secrets.DO_ACCESS_TOKEN }}
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          port: 22
+          script: |
+            echo "=== SSH Connection Successful ==="
+            echo "Hostname: $(hostname)"
+            echo "OS: $(uname -s)"
+            echo "Kernel: $(uname -r)"
+            echo "User: $(whoami)"
+            echo "Home: $HOME"
 
-      - name: Test DO connection
-        run: |
-          echo "=== Testing DigitalOcean Connection ==="
+      - name: Check droplet environment
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          port: 22
+          script: |
+            echo "=== Checking Required Software ==="
 
-          if doctl account get; then
-            echo "✓ Successfully connected to DigitalOcean"
-          else
-            echo "✗ Failed to connect to DigitalOcean"
-            echo "Check that DO_ACCESS_TOKEN secret is set correctly"
-            exit 1
-          fi
-
-      - name: Check registry
-        run: |
-          echo "=== Checking Container Registry ==="
-
-          if doctl registry get 2>/dev/null; then
-            echo "✓ Container registry exists"
-
-            echo "=== Registry repositories ==="
-            doctl registry repository list || echo "No repositories found"
-          else
-            echo "✗ No container registry found"
-            echo "Create one with: doctl registry create for-classification"
-          fi
-
-      - name: Check existing apps
-        run: |
-          echo "=== Checking Existing Apps ==="
-
-          if [ -z "${{ secrets.DO_APP_NAME }}" ]; then
-            echo "⚠️  DO_APP_NAME secret is not set"
-          else
-            echo "Looking for app: ${{ secrets.DO_APP_NAME }}"
-
-            if doctl apps list --format Name --no-header | grep -q "${{ secrets.DO_APP_NAME }}"; then
-              echo "✓ App '${{ secrets.DO_APP_NAME }}' exists"
-              doctl apps get "${{ secrets.DO_APP_NAME }}" --format ID,LiveURL,UpdatedAt --no-header
+            # Check Python
+            if command -v python3 &> /dev/null; then
+              echo "✓ Python3: $(python3 --version)"
             else
-              echo "ℹ️  App '${{ secrets.DO_APP_NAME }}' does not exist (will be created)"
+              echo "✗ Python3 not installed"
             fi
-          fi
 
-  test-app-spec:
-    runs-on: ubuntu-latest
-    name: Test App Specification
-    if: github.event_name == 'workflow_dispatch'  # Only on manual trigger
+            # Check pip
+            if command -v pip3 &> /dev/null; then
+              echo "✓ pip3: $(pip3 --version)"
+            else
+              echo "✗ pip3 not installed"
+            fi
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+            # Check PM2
+            if command -v pm2 &> /dev/null; then
+              echo "✓ PM2: $(pm2 --version)"
+            else
+              echo "✗ PM2 not installed"
+              echo "Install with: npm install -g pm2"
+            fi
 
-      - name: Install doctl
-        uses: digitalocean/action-doctl@v2
+            # Check Git
+            if command -v git &> /dev/null; then
+              echo "✓ Git: $(git --version)"
+            else
+              echo "✗ Git not installed"
+            fi
+
+            # Check if app directory exists
+            if [ -d "${{ secrets.DROPLET_APP_PATH }}" ]; then
+              echo "✓ App directory exists: ${{ secrets.DROPLET_APP_PATH }}"
+              cd "${{ secrets.DROPLET_APP_PATH }}"
+
+              # Check if it's a git repo
+              if [ -d ".git" ]; then
+                echo "✓ Git repository initialized"
+                echo "Current branch: $(git branch --show-current)"
+                echo "Latest commit: $(git log -1 --oneline)"
+              else
+                echo "✗ Not a git repository"
+              fi
+            else
+              echo "✗ App directory does not exist: ${{ secrets.DROPLET_APP_PATH }}"
+            fi
+
+            echo "=== Environment Check Complete ==="
+
+      - name: Test PM2 status
+        uses: appleboy/ssh-action@v1.0.0
         with:
-          token: ${{ secrets.DO_ACCESS_TOKEN }}
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          port: 22
+          script: |
+            echo "=== PM2 Process Status ==="
 
-      - name: Update image tag in spec
-        run: |
-          echo "=== Original app_registry.yaml ==="
-          cat app_registry.yaml
+            if command -v pm2 &> /dev/null; then
+              pm2 list
+              echo ""
 
-          echo -e "\n=== Updating tag to test-${{ github.run_number }} ==="
-          sed -i "s|tag: latest|tag: test-${{ github.run_number }}|g" app_registry.yaml
-
-          echo -e "\n=== Updated app_registry.yaml ==="
-          cat app_registry.yaml
-
-      - name: Validate app spec
-        run: |
-          echo "=== Validating App Specification ==="
-
-          if doctl apps spec validate app_registry.yaml; then
-            echo "✓ App specification is valid"
-          else
-            echo "✗ App specification validation failed"
-            echo "Check the error message above for details"
-            exit 1
-          fi
-
-      - name: Dry run app creation
-        run: |
-          echo "=== Testing App Creation (Dry Run) ==="
-
-          # This will validate without actually creating the app
-          doctl apps spec validate app_registry.yaml --verbose
-
-          echo "✓ App specification is ready for deployment"
+              if pm2 describe for-classification > /dev/null 2>&1; then
+                echo "✓ 'for-classification' process found"
+                pm2 info for-classification
+              else
+                echo "ℹ️  'for-classification' process not running (will be started on first deployment)"
+              fi
+            else
+              echo "⚠️  PM2 not installed on droplet"
+            fi
 
   summary:
     runs-on: ubuntu-latest
-    needs: [validate-config, test-docker-build]
+    needs: [validate-config, test-python-setup]
     if: always()
     name: Summary
 
@@ -207,20 +226,35 @@ jobs:
             echo "✗ Configuration validation failed"
           fi
 
-          if [ "${{ needs.test-docker-build.result }}" == "success" ]; then
-            echo "✓ Docker build successful"
+          if [ "${{ needs.test-python-setup.result }}" == "success" ]; then
+            echo "✓ Python dependencies OK"
           else
-            echo "✗ Docker build failed"
+            echo "✗ Python dependency test failed"
           fi
 
           echo ""
-          echo "To run full tests including DO connection:"
+          echo "To run SSH connectivity tests:"
           echo "1. Go to Actions tab"
           echo "2. Select 'Test Deployment Configuration'"
           echo "3. Click 'Run workflow'"
+          echo ""
+          echo "Required GitHub Secrets for deployment:"
+          echo "  - DROPLET_HOST (droplet IP or hostname)"
+          echo "  - DROPLET_USER (SSH username, e.g., 'ubuntu')"
+          echo "  - DROPLET_SSH_KEY (private SSH key)"
+          echo "  - DROPLET_APP_PATH (app directory path)"
+          echo "  - DROPLET_HEALTH_URL (optional: http://your-domain.com)"
+          echo "  - SUPABASE_URL"
+          echo "  - SUPABASE_KEY"
+          echo "  - NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD, NEO4J_DATABASE"
+          echo "  - DEFAULT_WEBHOOK_URL"
+          echo "  - ADMIN_EMAIL"
 
-          if [ "${{ needs.validate-config.result }}" != "success" ] || [ "${{ needs.test-docker-build.result }}" != "success" ]; then
+          if [ "${{ needs.validate-config.result }}" != "success" ] || [ "${{ needs.test-python-setup.result }}" != "success" ]; then
             echo ""
             echo "⚠️  Some tests failed. Check the logs above for details."
             exit 1
           fi
+
+          echo ""
+          echo "✅ All basic tests passed!"

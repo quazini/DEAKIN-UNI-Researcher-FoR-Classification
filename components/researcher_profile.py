@@ -47,7 +47,7 @@ def display_institutional_info(institutional_context: Dict[str, Any]):
         st.warning("Institutional information not available")
         return
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         organization = institutional_context.get('organization', 'Not specified')
@@ -64,6 +64,13 @@ def display_institutional_info(institutional_context: Dict[str, Any]):
             st.warning("💼 **Position**\nNot specified")
 
     with col3:
+        school = institutional_context.get('school', 'Not specified')
+        if school != 'Not specified':
+            st.info(f"**🏫 School**\n{school}")
+        else:
+            st.warning("🏫 **School**\nNot specified")
+
+    with col4:
         department = institutional_context.get('department', 'Not specified')
         if department != 'Not specified':
             st.info(f"**🏢 Department**\n{department}")
@@ -232,12 +239,8 @@ def display_complete_researcher_profile(response_data: Dict[str, Any]):
         # Extract institution from biography if needed
         biography = llm_data.get('evidence_based_biography', '') or llm_data.get('enriched_biography', '')
 
-        # For Jessica Tout-Lyon specifically, correct the affiliation
-        if 'Jessica Tout-Lyon' in response_data.get('researcher_name', '') and 'Charles Sturt University' in biography:
-            institutional_context['organization'] = 'Charles Sturt University'
-            # Keep position if it's valid, otherwise set to Researcher
-            if not institutional_context.get('position') or institutional_context.get('position') == 'Not specified':
-                institutional_context['position'] = 'Researcher'
+        # The institutional context should now come directly from the payload fields
+        # No need for hardcoded researcher-specific logic
 
     # Display institutional information if available
     if institutional_context:
